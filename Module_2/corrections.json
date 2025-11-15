@@ -1,0 +1,20 @@
+{
+  "simple_tag_rules": {
+    "thông tin": "N",
+    "căn cứ": "N",
+    "hà nội": "Np",
+    "bgdđt": "Ny",
+    "ttg": "Ny",
+    "nghị định": "N",
+    "chính phủ": "N",
+    "bộ trưởng": "N",
+    "giáo dục": "N",
+    "đào tạo": "N",
+    "cơ cấu": "N",
+    "quyết định": "N",
+    "chủ nghĩa": "N",
+    "cp": "Ny",
+    "thủ tục": "N",
+    "quyền hạn": "N"
+  }
+}
