@@ -197,7 +197,7 @@ def main():
         
         # Xuat JSON
         # ner_doc tu analyze_ner chinh la doc_hybrid
-        export_json(pos_doc, pos_tags, ner_doc, dep_doc, ner_doc, raw_text, analyzer, script_dir)
+        export_json(pos_doc, pos_tags, ner_doc, dep_doc, ner_doc, raw_text, analyzer, script_dir, file_name=os.path.basename(txt_path))
     
     elif section_choice == 5:
         # Chay tat ca + Xuat JSON
@@ -207,7 +207,7 @@ def main():
         
         # Xuat JSON
         # ner_doc tu analyze_ner chinh la doc_hybrid
-        export_json(pos_doc, pos_tags, ner_doc, dep_doc, ner_doc, raw_text, analyzer, script_dir)
+        export_json(pos_doc, pos_tags, ner_doc, dep_doc, ner_doc, raw_text, analyzer, script_dir, file_name=os.path.basename(txt_path))
         
         # Tong ket
         print_summary(txt_path, raw_text, pos_doc, ner_doc, analyzer)
@@ -215,7 +215,7 @@ def main():
     print("\n" + "=" * 70)
 
 
-def export_json(pos_doc, pos_tags, ner_doc_for_comparison, dep_doc, doc_hybrid, raw_text, analyzer, script_dir):
+def export_json(pos_doc, pos_tags, ner_doc_for_comparison, dep_doc, doc_hybrid, raw_text, analyzer, script_dir, file_name=""):
     """Xuat file JSON."""
     print_header("JSON OUTPUT CHO MODULE 3 (LLM)")
     
@@ -227,7 +227,8 @@ def export_json(pos_doc, pos_tags, ner_doc_for_comparison, dep_doc, doc_hybrid, 
         dep_doc=dep_doc,
         hybrid_doc=doc_hybrid,  # Day cung la ner_doc tu analyze_ner
         raw_text=raw_text,
-        stats=analyzer.get_stats()
+        stats=analyzer.get_stats(),
+        file_name=file_name
     )
     
     json_file = os.path.join(script_dir, "Output", "module_2_output.json")

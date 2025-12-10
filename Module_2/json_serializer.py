@@ -4,9 +4,90 @@ Serialize TAT CA du kien da trich xuat (POS, NER, Dependency, Hybrid NER) thanh 
 """
 
 import json
+from datetime import datetime
+import re
 
 
-def serialize_full_analysis_to_json(pos_doc, pos_tags, ner_doc, dep_doc, hybrid_doc, raw_text, stats):
+def _normalize_decision_id(text: str) -> str:
+    """Chuan hoa DECISION_ID ve dang chuan: NN[/YYYY]/QĐ-BGDĐT hoac NN[/YYYY]/NĐ-CP.
+    Vi du:
+      - "số. 2750 qđ-bgdđt" -> "2750/QĐ-BGDĐT"
+      - "số 37 2025 nđ-cp" -> "37/2025/NĐ-CP"
+    """
+    if not text:
+        return ""
+    s = text.strip().lower()
+    # loai bo prefix 'số', 'so' va cac dau phay, dau cham thua
+    s = re.sub(r"\b(số|so)\b\s*[.:,-]*\s*", "", s)
+    # Thay nhieu khoang trang bang 1 khoang
+    s = re.sub(r"\s+", " ", s)
+    # Gop cac pattern tach bang dau '-' xung quanh khoang trang
+    s = re.sub(r"\s*-\s*", "-", s)
+
+    # Truong hop: num / code (khong co nam), vi du: 2827/qđ-bgdđt
+    m0 = re.search(
+        r"(?P<num>\d{1,6})\s*/\s*(?P<code>qđ\s*-?\s*bgdđt|nđ\s*-?\s*cp)\b",
+        s,
+        flags=re.IGNORECASE,
+    )
+    if m0:
+        num = m0.group("num")
+        code = m0.group("code").replace(" ", "").replace("-", "-")
+        code = code.replace("qđbgdđt", "qđ-bgdđt").replace("nđcp", "nđ-cp")
+        return f"{num}/{code.upper()}"
+
+    # Tim num, optional year, code
+    # 1) Uu tien match "num (slash hoac space) year code"
+    m = re.search(
+        r"(?P<num>\d{1,6})\s*(?:/|\s)\s*(?P<year>\d{4})\s*(?P<code>qđ\s*-?\s*bgdđt|nđ\s*-?\s*cp)",
+        s,
+        flags=re.IGNORECASE,
+    )
+    if m:
+        num = m.group("num")
+        year = m.group("year")
+        code = m.group("code")
+    else:
+        # 2) num code (khong year)
+        m2 = re.search(r"(?P<num>\d{1,6})\s*(?P<code>qđ\s*-?\s*bgdđt|nđ\s*-?\s*cp)", s, flags=re.IGNORECASE)
+        if not m2:
+            return text.strip().upper()
+        num = m2.group("num")
+        year = None
+        code = m2.group("code")
+    # Chuan hoa code
+    code = code.replace(" ", "").replace("-", "-")
+    code = code.replace("qđbgdđt", "qđ-bgdđt").replace("nđcp", "nđ-cp")
+    code_up = code.upper()
+
+    if year:
+        return f"{num}/{year}/{code_up}"
+    return f"{num}/{code_up}"
+
+
+def _parse_issue_date_iso(text: str) -> str:
+    """Parse chuoi 'ngày DD tháng M năm YYYY' ve ISO YYYY-MM-DD.
+    Tra ve chuoi rong neu khong match.
+    """
+    if not text:
+        return ""
+    s = text.strip().lower()
+    # Bo cac dau cham phay thua xung quanh
+    s = s.replace(",", " ").replace(".", " ")
+    s = re.sub(r"\s+", " ", s)
+    m = re.search(r"ngày\s*(\d{1,2})\s*tháng\s*(\d{1,2})\s*năm\s*(\d{4})", s)
+    if not m:
+        return ""
+    d, mth, y = m.group(1), m.group(2), m.group(3)
+    try:
+        dd = f"{int(d):02d}"
+        mm = f"{int(mth):02d}"
+        return f"{y}-{mm}-{dd}"
+    except Exception:
+        return ""
+
+
+def serialize_full_analysis_to_json(pos_doc, pos_tags, ner_doc, dep_doc, hybrid_doc, raw_text, stats, file_name=None):
     """
     Serialize TAT CA du kien da trich xuat thanh JSON day du
     de cung cap cho Module 3 (LLM).
@@ -44,6 +125,7 @@ def serialize_full_analysis_to_json(pos_doc, pos_tags, ner_doc, dep_doc, hybrid_
     
     # 2. DEPENDENCY PARSING - Trich xuat quan he phu thuoc
     sentences = []
+    sentence_spans = []
     for sent in dep_doc.sents:
         sentence_data = {
             "text": sent.text.strip(),
@@ -51,6 +133,7 @@ def serialize_full_analysis_to_json(pos_doc, pos_tags, ner_doc, dep_doc, hybrid_
             "end_char": sent.end_char,
             "tokens": []
         }
+        sentence_spans.append((sent.start_char, sent.end_char))
         
         for token in sent:
             sentence_data["tokens"].append({
@@ -73,13 +156,29 @@ def serialize_full_analysis_to_json(pos_doc, pos_tags, ner_doc, dep_doc, hybrid_
     rule_labels = {'DECISION_ID', 'ISSUE_DATE'}
     
     for ent in hybrid_doc.ents:
-        entities.append({
+        # Xac dinh chi so cau chua entity
+        sent_idx = -1
+        for idx, (s_start, s_end) in enumerate(sentence_spans):
+            if ent.start_char >= s_start and ent.start_char < s_end:
+                sent_idx = idx
+                break
+
+        ent_obj = {
             "text": ent.text,
             "label": ent.label_,
             "start_char": ent.start_char,
             "end_char": ent.end_char,
-            "source": "rule-based" if ent.label_ in rule_labels else "statistical"
-        })
+            "source": "rule-based" if ent.label_ in rule_labels else "statistical",
+            "sentence_idx": sent_idx
+        }
+
+        # Bo sung truong chuan hoa/ISO cho cac nhan quan trong
+        if ent.label_ == 'DECISION_ID':
+            ent_obj["normalized"] = _normalize_decision_id(ent.text)
+        elif ent.label_ == 'ISSUE_DATE':
+            ent_obj["date_iso"] = _parse_issue_date_iso(ent.text)
+
+        entities.append(ent_obj)
     
     # 4. TOKENS DETAIL - Trich xuat chi tiet toan bo tokens tu hybrid doc
     all_tokens = []
@@ -107,8 +206,11 @@ def serialize_full_analysis_to_json(pos_doc, pos_tags, ner_doc, dep_doc, hybrid_
     output_json_data = {
         "metadata": {
             "source": "Module 2 - Vietnamese Document Analysis",
+            "file_name": file_name or "",
+            "exported_at": datetime.utcnow().isoformat() + "Z",
             "text_length": len(raw_text),
-            "total_tokens": len(all_tokens),
+            # Dong bo voi POS tokens de de doi chieu
+            "total_tokens": len(pos_tokens),
             "total_sentences": len(sentences),
             "total_entities": len(entities)
         },
