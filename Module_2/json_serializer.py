@@ -126,28 +126,47 @@ def serialize_full_analysis_to_json(pos_doc, pos_tags, ner_doc, dep_doc, hybrid_
     # 2. DEPENDENCY PARSING - Trich xuat quan he phu thuoc
     sentences = []
     sentence_spans = []
-    for sent in dep_doc.sents:
-        sentence_data = {
-            "text": sent.text.strip(),
-            "start_char": sent.start_char,
-            "end_char": sent.end_char,
-            "tokens": []
-        }
-        sentence_spans.append((sent.start_char, sent.end_char))
-        
-        for token in sent:
-            sentence_data["tokens"].append({
-                "text": token.text,
-                "pos": token.pos_,
-                "dep": token.dep_,
-                "head": token.head.text,
-                "head_pos": token.head.pos_,
-                "is_root": token.dep_ == "ROOT",
-                "start_char": token.idx,
-                "end_char": token.idx + len(token.text)
-            })
-        
-        sentences.append(sentence_data)
+    
+    if dep_doc is not None:
+        for sent in dep_doc.sents:
+            sentence_data = {
+                "text": sent.text.strip(),
+                "start_char": sent.start_char,
+                "end_char": sent.end_char,
+                "tokens": []
+            }
+            sentence_spans.append((sent.start_char, sent.end_char))
+            
+            for token in sent:
+                sentence_data["tokens"].append({
+                    "text": token.text,
+                    "pos": token.pos_,
+                    "dep": token.dep_,
+                    "head": token.head.text,
+                    "head_pos": token.head.pos_,
+                    "is_root": token.dep_ == "ROOT",
+                    "start_char": token.idx,
+                    "end_char": token.idx + len(token.text)
+                })
+            
+            sentences.append(sentence_data)
+    else:
+        # Fallback if dep_doc is None (e.g. parser missing)
+        # Use hybrid_doc for sentence segmentation if available
+        if hybrid_doc and hybrid_doc.has_annotation("SENT_START"):
+             for sent in hybrid_doc.sents:
+                sentence_data = {
+                    "text": sent.text.strip(),
+                    "start_char": sent.start_char,
+                    "end_char": sent.end_char,
+                    "tokens": []
+                }
+                sentence_spans.append((sent.start_char, sent.end_char))
+                sentences.append(sentence_data)
+        else:
+             # Last resort: treat whole text as one sentence or split by newline
+             # For simplicity, let's just skip sentence details or use basic split
+             pass
     
     # 3. ENTITIES (HYBRID) - Day la danh sach CUOI CUNG cho Module 3
     # Chua TAT CA entities: rule-based (DECISION_ID, ISSUE_DATE) + statistical (PER, ORG, LOC...)

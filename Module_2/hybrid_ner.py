@@ -593,8 +593,15 @@ def analyze_hybrid_ner(nlp, raw_text):
     ]
     
     # Thêm EntityRuler SAU parser với overwrite_ents=True
-    ruler = nlp.add_pipe("entity_ruler", after="parser", 
-                        config={"overwrite_ents": True})
+    if "parser" in nlp.pipe_names:
+        ruler = nlp.add_pipe("entity_ruler", after="parser", 
+                            config={"overwrite_ents": True})
+    elif "ner" in nlp.pipe_names:
+        ruler = nlp.add_pipe("entity_ruler", after="ner", 
+                            config={"overwrite_ents": True})
+    else:
+        ruler = nlp.add_pipe("entity_ruler", last=True, 
+                            config={"overwrite_ents": True})
     ruler.add_patterns(patterns)
     
     # Xử lý văn bản

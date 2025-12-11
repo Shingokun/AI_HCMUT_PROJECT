@@ -63,3 +63,5 @@ venv.bak/
 Module_2/Output/
 Module_2/dependency_parse.html
 Module_2/.env/
+
+processed_document.txt

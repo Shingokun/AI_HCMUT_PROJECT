@@ -153,13 +153,43 @@ class DocumentPreprocessor:
         if not self.ocr_reader:
             self.raw_text = ""
             return self
-        images = convert_from_path(file_path, dpi=300)
-        full_text = []
-        for img in images:
-            img_np = np.array(img)
-            result = self.ocr_reader.readtext(img_np, detail=0, paragraph=True)
-            full_text.append(" ".join(result))
-        self.raw_text = "\n".join(full_text)
+        
+        # Use fitz (PyMuPDF) to extract images instead of pdf2image (requires poppler)
+        try:
+            doc = fitz.open(file_path)
+            full_text = []
+            
+            for page_index in range(len(doc)):
+                page = doc[page_index]
+                image_list = page.get_images(full=True)
+                
+                # If page has images, process them
+                if image_list:
+                    for img_index, img in enumerate(image_list):
+                        xref = img[0]
+                        base_image = doc.extract_image(xref)
+                        image_bytes = base_image["image"]
+                        
+                        # Convert bytes to numpy array for EasyOCR
+                        # EasyOCR can read from bytes directly or we can convert to PIL/numpy
+                        # But EasyOCR readtext accepts bytes
+                        result = self.ocr_reader.readtext(image_bytes, detail=0, paragraph=True)
+                        full_text.append(" ".join(result))
+                else:
+                    # If no images found but text extraction failed earlier, 
+                    # maybe it's a full page image not detected as 'images' list?
+                    # Render page to pixmap (image)
+                    pix = page.get_pixmap(dpi=300)
+                    # Convert pixmap to bytes
+                    img_bytes = pix.tobytes("png")
+                    result = self.ocr_reader.readtext(img_bytes, detail=0, paragraph=True)
+                    full_text.append(" ".join(result))
+                    
+            self.raw_text = "\n".join(full_text)
+        except Exception as e:
+            print(f"Lỗi khi OCR PDF bằng fitz: {e}")
+            self.raw_text = ""
+            
         return self
 
     def _handle_hard_line_breaks(self, text):

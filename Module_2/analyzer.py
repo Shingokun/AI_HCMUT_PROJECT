@@ -6,7 +6,7 @@ Theo báo cáo kỹ thuật: Hybrid Architecture với underthesea + EntityRuler
 import spacy
 import sys
 
-from text_cleaner import clean_text_preserve_case, clean_text_lowercase
+# from text_cleaner import clean_text_preserve_case, clean_text_lowercase # Removed redundant cleaning
 from pos_tagger import POSTagger
 from hybrid_ner import analyze_hybrid_ner
 
@@ -38,26 +38,42 @@ class DocumentAnalyzer:
         Returns:
             spacy.Language: Mô hình spaCy đã load
         """
+        nlp = None
         try:
             nlp = spacy.load(model_name)
-            return nlp
         except OSError:
             print(f"Loi: Khong tim thay mo hinh '{model_name}'")
-            print(f"Chay: python -m spacy download {model_name}")
-            sys.exit()
+            fallback_model = 'xx_ent_wiki_sm'
+            print(f"Dang thu load fallback model '{fallback_model}'...")
+            try:
+                nlp = spacy.load(fallback_model)
+            except OSError:
+                print(f"Loi: Khong tim thay ca fallback model '{fallback_model}'")
+                print(f"Chay: python -m spacy download {model_name}")
+                print(f"Hoac: python -m spacy download {fallback_model}")
+                sys.exit()
+        
+        # Add sentencizer if parser is missing (required for sentence segmentation)
+        if 'parser' not in nlp.pipe_names:
+            try:
+                nlp.add_pipe('sentencizer')
+            except Exception:
+                pass # sentencizer might already exist or be incompatible
+                
+        return nlp
     
     def analyze_pos(self, text):
         """
         Phân tích POS tagging cho văn bản.
         
         Args:
-            text (str): Văn bản gốc (chưa làm sạch)
+            text (str): Văn bản gốc (đã được làm sạch từ Module 1)
         
         Returns:
             tuple: (doc, corrected_tags)
         """
-        cleaned_text = clean_text_lowercase(text)
-        return self.pos_tagger.tag(cleaned_text)
+        # cleaned_text = clean_text_lowercase(text) # Redundant
+        return self.pos_tagger.tag(text)
     
     def analyze_ner(self, text):
         """
@@ -65,13 +81,13 @@ class DocumentAnalyzer:
         Kết hợp underthesea (statistical) + EntityRuler (rule-based).
         
         Args:
-            text (str): Văn bản gốc (chưa làm sạch)
+            text (str): Văn bản gốc (đã được làm sạch từ Module 1)
         
         Returns:
             tuple: (doc_hybrid, entities) - Document và danh sách entities
         """
-        cleaned_text = clean_text_preserve_case(text)
-        return analyze_hybrid_ner(self.nlp, cleaned_text)
+        # cleaned_text = clean_text_preserve_case(text) # Redundant
+        return analyze_hybrid_ner(self.nlp, text)
     
     def analyze_full(self, text):
         """
