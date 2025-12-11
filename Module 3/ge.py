@@ -6,7 +6,7 @@ from google.genai import types
 # --- 1. CẤU HÌNH API KEY ---
 # Đảm bảo bạn đã cài đặt biến môi trường GEMINI_API_KEY
 # Nếu không, bạn có thể thiết lập trực tiếp ở đây, nhưng KHÔNG KHUYẾN KHÍCH TRONG MÔI TRƯỜNG SẢN XUẤT.
-api_key = "AIzaSyDGpcFoJyV9bBOCL-X6Qa4XplZohtIDgnc"
+api_key = "api_key"
 # client = genai.Client(api_key=api_key)
 
 # Lấy API Key từ biến môi trường (Khuyến nghị)
