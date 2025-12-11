@@ -17,6 +17,7 @@ LOGIC XỬ LÝ XUNG ĐỘT:
 """
 
 from underthesea import ner as underthesea_ner
+import os
 from spacy.tokens import Span, Doc
 
 
@@ -82,7 +83,7 @@ def _resolve_conflicts(rule_entities, stat_entities, text):
     return merged
 
 
-def _parse_underthesea_entities(underthesea_result, text):
+def _parse_underthesea_entities(underthesea_result, text, debug=False):
     """
     Chuyển đổi output của underthesea sang format chuẩn.
     
@@ -132,9 +133,15 @@ def _parse_underthesea_entities(underthesea_result, text):
         end = pos
         entity_text = text[start:end]
         
+        # Chi giu cac nhan duoc ho tro: PER, ORG, LOC
+        ent_label = current_label.split('-')[1] if current_label else ''
+        if ent_label not in {'PER', 'ORG', 'LOC'}:
+            search_pos = end
+            return
+
         entities.append({
             'text': entity_text,
-            'label': current_label.split('-')[1],
+            'label': ent_label,
             'start': start,
             'end': end,
             'source': 'statistical'
@@ -178,8 +185,19 @@ def _parse_underthesea_entities(underthesea_result, text):
     # Xử lý entity cuối cùng
     add_entity()
     
+    # Debug: truoc khi loc
+    if debug:
+        print(f"  • Luồng A (grouped before filter): {len(entities)}")
+        for e in entities[:5]:
+            print(f"    - [{e['label']}] {e['text']}")
+        if len(entities) > 5:
+            print(f"    ... (+{len(entities)-5} more)")
+    
     # Lọc nhiễu
-    return _filter_noisy_entities(entities)
+    filtered = _filter_noisy_entities(entities)
+    if debug:
+        print(f"  • Luồng A (after noise filter): {len(filtered)}")
+    return filtered
 
 
 def _filter_noisy_entities(entities):
@@ -208,18 +226,22 @@ def _filter_noisy_entities(entities):
         
         # Chức danh đơn lẻ (không có tên người)
         'chánh', 'thủ trưởng', 'bộ trưởng', 'kt.', 'kt', 'thứ trưởng',
+        'ký thay', 'bộ trưởng như điều', 'để blc', 'vc các bộ',
         
         # Từ chỉ thời gian
         'năm', 'ngày', 'tháng',
         
         # Từ khóa khác
-        'như điều', 'nơi nhận', 'cục', 'văn phòng',
+        'như điều', 'nơi nhận', 'cục', 'văn phòng', 'lưu',
         
         # Thêm các từ nhiễu mới phát hiện (từ module_2_output.json)
         'kstthc', 
         ', vp',
         'vp',
-        'vt'
+        'vt',
+        'htqt',
+        'vi',
+        'ubnd'
     }
     
     # Danh sách địa danh quan trọng (cho phép ngay cả khi nhãn sai)
@@ -316,6 +338,11 @@ def _filter_noisy_entities(entities):
         # Loại bỏ nếu kết thúc bằng chức danh đơn lẻ (lỗi gộp)
         if any(text_clean.endswith(' ' + title) for title in ['bộ trưởng', 'thứ trưởng', 'chánh', 'thủ trưởng']):
             continue
+        
+        # Loại bỏ LOC nhiễu chứa các cụm chức danh/cơ quan chung chung
+        if ent['label'] == 'LOC':
+            if any(kw in text_clean for kw in ['bộ trưởng', 'bộ giáo dục', 'văn phòng', 'cục trưởng', 'thủ trưởng']):
+                continue
         
         # GIỮ LẠI thực thể này
         filtered.append(ent)
@@ -415,7 +442,8 @@ def analyze_hybrid_ner(nlp, raw_text):
     # ==================== LUỒNG A: STATISTICAL NER ====================
     print("\n[LUỒNG A] Statistical NER (underthesea)...")
     underthesea_result = underthesea_ner(raw_text)
-    stat_entities = _parse_underthesea_entities(underthesea_result, raw_text)
+    debug_stat = os.environ.get('DEBUG_STAT_NER') == '1'
+    stat_entities = _parse_underthesea_entities(underthesea_result, raw_text, debug=debug_stat)
     
     print(f"  → Tìm thấy {len(stat_entities)} statistical entities")
     
@@ -438,27 +466,128 @@ def analyze_hybrid_ner(nlp, raw_text):
     
     # Định nghĩa patterns
     patterns = [
-        # DECISION_ID - Số Quyết định (hỗ trợ cả "2827 /QĐ-BGDĐT" và "2827/QĐ-BGDĐT")
-        {
-            "label": "DECISION_ID",
-            "pattern": [
-                {"TEXT": {"REGEX": r"^\d+$"}},
-                {"TEXT": {"REGEX": r"^\s*/?\s*$"}},
-                {"TEXT": {"REGEX": r"^QĐ$|^QD$"}, "OP": "?"},
-                {"TEXT": "-", "OP": "?"},
-                {"TEXT": {"REGEX": r"^BGD[ĐD]T$"}}
-            ]
-        },
-        # ISSUE_DATE - Ngày ban hành
+        # ISSUE_DATE - Ngày ban hành (linh hoạt số 1-2 chữ số, năm 2-4 chữ số)
         {
             "label": "ISSUE_DATE",
             "pattern": [
                 {"LOWER": "ngày"},
-                {"TEXT": {"REGEX": r"^\d{1,2}$"}},
+                {"IS_DIGIT": True},
                 {"LOWER": "tháng"},
-                {"TEXT": {"REGEX": r"^\d{1,2}$"}},
+                {"IS_DIGIT": True},
                 {"LOWER": "năm"},
-                {"TEXT": {"REGEX": r"^\d{4}$"}}
+                {"IS_DIGIT": True}
+            ]
+        },
+        # DECISION_ID - Dạng "số 37 2025 nđ-cp" hoặc "số 37 nđ-cp"
+        {
+            "label": "DECISION_ID",
+            "pattern": [
+                {"LOWER": "số"},
+                {"IS_PUNCT": True, "OP": "*"},
+                {"IS_SPACE": True, "OP": "*"},
+                {"IS_DIGIT": True},
+                {"IS_SPACE": True, "OP": "*"},
+                {"IS_DIGIT": True, "OP": "?"},
+                {"IS_SPACE": True, "OP": "*"},
+                {"LOWER": {"REGEX": r"^(nđ-cp|qđ-bgdđt)$"}}
+            ]
+        },
+        # DECISION_ID - Dạng "số 92/2017/nđ-cp" (1 token hoặc nhiều token tách bởi '/')
+        {
+            "label": "DECISION_ID",
+            "pattern": [
+                {"LOWER": "số"},
+                {"IS_SPACE": True, "OP": "*"},
+                {"TEXT": {"REGEX": r"^\d{1,4}/\d{2,4}(/[-\wđ]+)?$"}}
+            ]
+        },
+        # DECISION_ID - Dạng "số 37/2025/nđ-cp" với mã code BẮT BUỘC
+        {
+            "label": "DECISION_ID",
+            "pattern": [
+                {"LOWER": "số"},
+                {"IS_SPACE": True, "OP": "*"},
+                {"IS_DIGIT": True},
+                {"TEXT": "/"},
+                {"IS_DIGIT": True},
+                {"TEXT": "/"},
+                {"LOWER": {"REGEX": r"^(nđ-cp|qđ-bgdđt)$"}}
+            ]
+        },
+        # DECISION_ID - Dạng "số 2827/qđ-bgdđt" (không có năm)
+        {
+            "label": "DECISION_ID",
+            "pattern": [
+                {"LOWER": "số"},
+                {"IS_SPACE": True, "OP": "*"},
+                {"IS_DIGIT": True},
+                {"TEXT": "/"},
+                {"LOWER": "qđ"},
+                {"TEXT": "-"},
+                {"LOWER": "bgdđt"}
+            ]
+        },
+        # DECISION_ID - Dạng một token sau "số": "2827/qđ-bgdđt" hoặc "37/2025/nđ-cp"
+        {
+            "label": "DECISION_ID",
+            "pattern": [
+                {"LOWER": "số"},
+                {"IS_SPACE": True, "OP": "*"},
+                {"TEXT": {"REGEX": r"^(?:\d{1,6}/(?:\d{4}/)?(?:nđ-cp|qđ-bgdđt))$"}}
+            ]
+        },
+        # DECISION_ID - Dạng "số . 2750 qđ-bgdđt" (mã tách bởi dấu gạch)
+        {
+            "label": "DECISION_ID",
+            "pattern": [
+                {"LOWER": "số"},
+                {"IS_PUNCT": True, "OP": "*"},
+                {"IS_DIGIT": True},
+                {"LOWER": "qđ"},
+                {"TEXT": "-"},
+                {"LOWER": "bgdđt"}
+            ]
+        },
+        # DECISION_ID - Dạng "số 37 2025 nđ - cp" (mã tách bởi dấu gạch và khoảng)
+        {
+            "label": "DECISION_ID",
+            "pattern": [
+                {"LOWER": "số"},
+                {"IS_DIGIT": True},
+                {"IS_DIGIT": True, "OP": "?"},
+                {"LOWER": "nđ"},
+                {"TEXT": "-"},
+                {"LOWER": "cp"}
+            ]
+        },
+        # DECISION_ID - Dạng "2750 qđ-bgdđt" (không có chữ "số")
+        {
+            "label": "DECISION_ID",
+            "pattern": [
+                {"IS_DIGIT": True},
+                {"IS_SPACE": True, "OP": "*"},
+                {"LOWER": {"REGEX": r"^(qđ-bgdđt|nđ-cp)$"}}
+            ]
+        },
+        # DECISION_ID - Dạng "2750 qđ - bgdđt" tách token theo dấu gạch
+        {
+            "label": "DECISION_ID",
+            "pattern": [
+                {"IS_DIGIT": True},
+                {"LOWER": "qđ"},
+                {"TEXT": "-"},
+                {"LOWER": "bgdđt"}
+            ]
+        },
+        # DECISION_ID - Dạng "63 2010 nđ - cp"
+        {
+            "label": "DECISION_ID",
+            "pattern": [
+                {"IS_DIGIT": True},
+                {"IS_DIGIT": True},
+                {"LOWER": "nđ"},
+                {"TEXT": "-"},
+                {"LOWER": "cp"}
             ]
         }
     ]

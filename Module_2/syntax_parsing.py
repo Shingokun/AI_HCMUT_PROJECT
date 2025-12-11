@@ -43,7 +43,7 @@ def analyze_dependency_parsing(nlp, raw_text, output_dir="."):
     print("\nTruc quan hoa cau dau tien:")
     output_path = os.path.join(output_dir, "dependency_parse.html")
     
-    html = displacy.render(sentences[0], style="dep", 
+    html = displacy.render(sentences[1], style="dep", 
                           options={"compact": True, "distance": 100})
     
     with open(output_path, 'w', encoding='utf-8') as f:
