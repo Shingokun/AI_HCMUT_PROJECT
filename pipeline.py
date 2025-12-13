@@ -8,6 +8,7 @@ sys.path.append(os.path.join(os.getcwd(), 'Module_1'))
 sys.path.append(os.path.join(os.getcwd(), 'Module_2'))
 sys.path.append(os.path.join(os.getcwd(), 'Module_3'))
 sys.path.append(os.path.join(os.getcwd(), 'Module_4'))
+sys.path.append(os.path.join(os.getcwd(), 'Module_5'))
 
 # Import Module 1
 try:
@@ -69,6 +70,14 @@ def select_test_file():
 
 # import module 4
 from Module_4.post_processor import run_module_4
+
+# Import Module 5
+try:
+    from Module_5.exporter import export_result
+except ImportError as e:
+    print(f"Error importing Module 5: {e}")
+    sys.exit(1)
+
 def main():
     # 1. Select File
     if len(sys.argv) > 1:
@@ -201,6 +210,13 @@ def main():
     print("FINAL RESULT (MODULE 4 OUTPUT)")
     print("=" * 50)
     print(json.dumps(final_result, indent=4, ensure_ascii=False))
+
+    # --- RUN MODULE 5 ---
+    print("\n" + "=" * 50)
+    print("RUNNING MODULE 5 (Export Result)")
+    print("=" * 50)
+    
+    export_result(final_result, input_file)
 
 if __name__ == "__main__":
     main()

@@ -1,24 +1,15 @@
 import os
 import json
+from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 
+# Load environment variables
+load_dotenv()
+
 # --- 1. CẤU HÌNH API KEY ---
 # Đảm bảo bạn đã cài đặt biến môi trường GEMINI_API_KEY
-# Nếu không, bạn có thể thiết lập trực tiếp ở đây, nhưng KHÔNG KHUYẾN KHÍCH TRONG MÔI TRƯỜNG SẢN XUẤT.
 api_key = os.environ.get("GEMINI_API_KEY")
-# client = genai.Client(api_key=api_key)
-
-# Lấy API Key từ biến môi trường (Khuyến nghị)
-try:
-    client = genai.Client(api_key=api_key)
-except Exception as e:
-    print("LỖI: Không tìm thấy GEMINI_API_KEY hoặc xảy ra lỗi kết nối.")
-    print("Vui lòng đảm bảo biến môi trường GEMINI_API_KEY đã được thiết lập.")
-    exit()
-
-# --- 2. DỮ LIỆU ĐẦU VÀO (Văn bản hành chính mẫu) ---
-# input_file_from_module1 = "processed_document.txt"
 
 def run_gemini(text_content):
     """
@@ -28,11 +19,15 @@ def run_gemini(text_content):
     Returns:
         dict: Kết quả trích xuất dưới dạng JSON.
     """
-    # Lấy API Key từ biến môi trường (Khuyến nghị)
+    if not api_key or api_key == "YOUR_API_KEY_HERE":
+        print("LỖI: GEMINI_API_KEY chưa được cấu hình đúng.")
+        print("Vui lòng mở file .env và thay thế 'YOUR_API_KEY_HERE' bằng API Key thực của bạn.")
+        return None
+
     try:
         client = genai.Client(api_key=api_key)
     except Exception as e:
-        print("LỖI: Không tìm thấy GEMINI_API_KEY hoặc xảy ra lỗi kết nối.")
+        print(f"LỖI: Không thể khởi tạo Gemini Client: {e}")
         return None
 
     # --- 3. ĐỊNH NGHĨA CẤU TRÚC ĐẦU RA (SCHEMA) ---
