@@ -7,6 +7,7 @@ import json
 sys.path.append(os.path.join(os.getcwd(), 'Module_1'))
 sys.path.append(os.path.join(os.getcwd(), 'Module_2'))
 sys.path.append(os.path.join(os.getcwd(), 'Module_3'))
+sys.path.append(os.path.join(os.getcwd(), 'Module_4'))
 
 # Import Module 1
 try:
@@ -66,6 +67,8 @@ def select_test_file():
         except ValueError:
             print("Invalid input.")
 
+# import module 4
+from Module_4.post_processor import run_module_4
 def main():
     # 1. Select File
     if len(sys.argv) > 1:
@@ -183,9 +186,22 @@ def main():
             print(json.dumps(result, indent=4, ensure_ascii=False))
         else:
             print("Module 3 failed to generate result.")
-            
+            return
     except Exception as e:
         print(f"Error in Module 3: {e}")
+        return
+    # --- RUN MODULE 4 ---
+    print("\n" + "=" * 50)
+    print("RUNNING MODULE 4 (Validation & Post-processing)")
+    print("=" * 50)
+
+    final_result = run_module_4(result)
+
+    print("\n" + "=" * 50)
+    print("FINAL RESULT (MODULE 4 OUTPUT)")
+    print("=" * 50)
+    print(json.dumps(final_result, indent=4, ensure_ascii=False))
 
 if __name__ == "__main__":
     main()
+

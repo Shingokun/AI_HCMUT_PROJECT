@@ -237,7 +237,7 @@ if __name__ == "__main__":
     #     fname = 'image'+str(i)+'.png'
     #     image.save(fname, "PNG")
         
-    input_file = "test_1.pdf"
+    input_file = "test/test_1.pdf"
     output_file = "processed_document.txt"
 
     processor = DocumentPreprocessor(use_gpu=True)
