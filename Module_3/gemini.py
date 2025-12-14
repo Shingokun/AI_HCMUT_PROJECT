@@ -1,5 +1,8 @@
 import os
 import json
+import time
+import re
+import random
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
@@ -127,22 +130,70 @@ def run_gemini(text_content):
 
     # --- 5. GỌI API GEMINI ---
     print("Đang gọi API Gemini để trích xuất thông tin...")
-    try:
-        response = client.models.generate_content(
-            model='gemini-2.5-flash', # Mô hình nhanh và hiệu quả cho trích xuất
-            contents=prompt,
-            config=config,
-        )
-        
-        # --- 6. XỬ LÝ KẾT QUẢ ---
-        # Đầu ra sẽ là một chuỗi JSON hợp lệ
-        json_output = response.text.strip()
-        parsed_data = json.loads(json_output)
-        return parsed_data
+    
+    # Danh sách các model để thử (ưu tiên model nhanh/rẻ trước)
+    # Dựa trên danh sách model khả dụng: gemini-2.5-flash, gemini-2.0-flash, gemini-2.0-flash-lite, etc.
+    models_to_try = [
+        'gemini-2.0-flash',
+        'gemini-2.0-flash-lite',
+        'gemini-2.5-flash',
+        'gemini-2.5-pro',
+        'gemini-flash-latest',
+        'gemini-pro-latest'
+    ]
+    
+    max_retries_per_model = 3
+    base_delay = 2
 
-    except Exception as e:
-        print(f"\\nLỖI khi gọi API: {e}")
-        return None
+    for model_name in models_to_try:
+        print(f"Trying model: {model_name}")
+        for attempt in range(max_retries_per_model):
+            try:
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=prompt,
+                    config=config,
+                )
+                
+                # --- 6. XỬ LÝ KẾT QUẢ ---
+                # Đầu ra sẽ là một chuỗi JSON hợp lệ
+                json_output = response.text.strip()
+                parsed_data = json.loads(json_output)
+                return parsed_data
+
+            except Exception as e:
+                error_str = str(e)
+                if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
+                    print(f"LỖI: Quota exceeded (429) for {model_name}. Attempt {attempt + 1}/{max_retries_per_model}")
+                    
+                    # If it's the last attempt for this model, break to try next model
+                    if attempt == max_retries_per_model - 1:
+                        print(f"Switching to next model after {max_retries_per_model} failed attempts...")
+                        break
+
+                    # Try to extract retry delay from error message
+                    retry_match = re.search(r"Please retry in (\d+(\.\d+)?)s", error_str)
+                    
+                    if retry_match:
+                        wait_time = float(retry_match.group(1)) + 1.0 # Add 1s buffer
+                        print(f"Waiting for {wait_time:.2f} seconds as requested by API...")
+                        time.sleep(wait_time)
+                    else:
+                        # Exponential backoff
+                        wait_time = (base_delay * (2 ** attempt)) + random.uniform(0, 1)
+                        print(f"Waiting for {wait_time:.2f} seconds (exponential backoff)...")
+                        time.sleep(wait_time)
+                    
+                    continue
+                else:
+                    print(f"\\nLỖI khi gọi API với model {model_name}: {e}")
+                    # Nếu lỗi không phải 429 (ví dụ 404 Not Found, 400 Bad Request), 
+                    # chúng ta nên thử model tiếp theo trong danh sách thay vì dừng hẳn.
+                    print(f"Switching to next model due to error...")
+                    break # Break inner loop to go to next model
+    
+    print(f"\\nLỖI: Đã thử tất cả các models {models_to_try} nhưng đều thất bại.")
+    return None
 
 if __name__ == "__main__":
     input_file_from_module1 = "processed_document.txt"
